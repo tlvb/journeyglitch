@@ -10,7 +10,7 @@
 #define PPM_BADFILE 2
 #define PPM_BADALLOC 3
 
-#define ppm_data(_i,_x,_y,_j) (_i->data[_i->width*_y+_x].x[_j])
+#define ppm_data(_i,_x,_y,_j) (_i->data[_i->width*(_y)+(_x)].x[_j])
 
 
 void ignorewhitespace(FILE *f);

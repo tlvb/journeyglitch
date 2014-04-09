@@ -10,6 +10,7 @@
 void vertigo(bitmap_t *bi, bitmap_t *bo);
 void glitch(bitmap_t *bi, bitmap_t *bo);
 void sweep(bitmap_t *bi, bitmap_t *bo);
+void blur(bitmap_t *bi, bitmap_t *bo);
 
 int rcmp(const char *s1, const char *s2) {
 	int l1 = strlen(s1);
@@ -22,8 +23,11 @@ int rcmp(const char *s1, const char *s2) {
 }
 
 int main(int argc, const char* const* argv) { /*{{{*/
-	assert(argc == 4); // type filei fileo
 
+	if (argc != 4) {
+		fprintf(stderr, "type filein fileout\n");
+		return 1;
+	}
 	fprintf(stderr, "type: '%c', file in: '%s', file out: '%s'\n", argv[1][0], argv[2], argv[3]);
 
 	char *command = calloc(strlen(argv[2])+128, sizeof(char));
@@ -68,18 +72,33 @@ int main(int argc, const char* const* argv) { /*{{{*/
 		// drifter
 		sweep(bi, bo);
 		break;
+	case 'b':
+		blur(bi, bo);
+		break;
 	default:
 		fprintf(stderr, "bad parameter '%c'\n", argv[1][0]);
 		return 1;
 	}
 
 	command = calloc(strlen(argv[3])+128, sizeof(char));
-	sprintf(command, "pnmtojpeg -quality 100 > %s", argv[3]);
+	if (rcmp(argv[3], "jpg") == 0 || rcmp(argv[3], "jpeg") == 0) {
+		fprintf(stderr, "jpeg image assumed from extension\n");
+		sprintf(command, "pnmtojpeg -quality 100 > %s", argv[3]);
+	}
+	else if (rcmp(argv[3], "png") == 0) {
+		fprintf(stderr, "png image assumed from extension\n");
+		sprintf(command, "pnmtopng > %s", argv[3]);
+	}
+	else {
+		fprintf(stderr, "unknown extension\n");
+	}
+
 	pfd = popen(command, "w");
 	if (!pfd) {
 		perror(NULL);
 	}
-	assert(pfd);
+	assert(pfd != NULL);
+	flag = PPM_OK;
 	ppm_fwrite(pfd, bo);
 	pclose(pfd);
 	free(command);
@@ -161,7 +180,7 @@ void glitch(bitmap_t *bi, bitmap_t *bo) { /*{{{*/
 		}
 	}
 } /*}}}*/
-void sweep(bitmap_t *bi, bitmap_t *bo) {
+void sweep(bitmap_t *bi, bitmap_t *bo) { /*{{{*/
 	for (unsigned int y=0; y<bi->height; ++y) {
 		for (unsigned int x=0; x<bi->width; ++x) {
 			if (x > 0) {
@@ -191,4 +210,366 @@ void sweep(bitmap_t *bi, bitmap_t *bo) {
 			}
 		}
 	}
-}
+} /*}}}*/
+void blur(bitmap_t *bi, bitmap_t *bo) { /*{{{*/
+	/* 0 111 2
+	 * 3 444 5
+	 * 3 444 5
+	 * 6 777 8 */
+
+	/* CASE 0 */
+	if (1) { /*{{{*/
+		/*
+		 * +----
+		 * | 4 2
+		 * | 2 1
+		 */
+		const unsigned int x = 0;
+		const unsigned int y = 0;
+		float r = 0.0f;
+		float g = 0.0f;
+		float b = 0.0f;
+
+		r += 4.0f*((float) ppm_data(bi,x  ,y  ,0))/255;
+		g += 4.0f*((float) ppm_data(bi,x  ,y  ,1))/255;
+		b += 4.0f*((float) ppm_data(bi,x  ,y  ,2))/255;
+		r += 2.0f*((float) ppm_data(bi,x+1,y  ,0))/255;
+		g += 2.0f*((float) ppm_data(bi,x+1,y  ,1))/255;
+		b += 2.0f*((float) ppm_data(bi,x+1,y  ,2))/255;
+
+		r += 2.0f*((float) ppm_data(bi,x  ,y+1,0))/255;
+		g += 2.0f*((float) ppm_data(bi,x  ,y+1,1))/255;
+		b += 2.0f*((float) ppm_data(bi,x  ,y+1,2))/255;
+		r += 1.0f*((float) ppm_data(bi,x+1,y+1,0))/255;
+		g += 1.0f*((float) ppm_data(bi,x+1,y+1,1))/255;
+		b += 1.0f*((float) ppm_data(bi,x+1,y+1,2))/255;
+
+		r /= 9.0f;
+		g /= 9.0f;
+		b /= 9.0f;
+
+		ppm_data(bo, x, y, 0) = r*255.0f;
+		ppm_data(bo, x, y, 1) = g*255.0f;
+		ppm_data(bo, x, y, 2) = b*255.0f;
+	} /*}}}*/
+	/* CASE 1 */
+	for (unsigned int x=1; x<bi->width-1; ++x) { /*{{{*/
+		/*
+		 * -----
+		 * 2 4 2
+		 * 1 2 1
+		 */
+		const unsigned int y = 0;
+		float r = 0.0f;
+		float g = 0.0f;
+		float b = 0.0f;
+		r += 2.0f*((float) ppm_data(bi,x-1,y  ,0))/255;
+		g += 2.0f*((float) ppm_data(bi,x-1,y  ,1))/255;
+		b += 2.0f*((float) ppm_data(bi,x-1,y  ,2))/255;
+		r += 4.0f*((float) ppm_data(bi,x  ,y  ,0))/255;
+		g += 4.0f*((float) ppm_data(bi,x  ,y  ,1))/255;
+		b += 4.0f*((float) ppm_data(bi,x  ,y  ,2))/255;
+		r += 2.0f*((float) ppm_data(bi,x+1,y  ,0))/255;
+		g += 2.0f*((float) ppm_data(bi,x+1,y  ,1))/255;
+		b += 2.0f*((float) ppm_data(bi,x+1,y  ,2))/255;
+
+		r += 1.0f*((float) ppm_data(bi,x-1,y+1,0))/255;
+		g += 1.0f*((float) ppm_data(bi,x-1,y+1,1))/255;
+		b += 1.0f*((float) ppm_data(bi,x-1,y+1,2))/255;
+		r += 2.0f*((float) ppm_data(bi,x  ,y+1,0))/255;
+		g += 2.0f*((float) ppm_data(bi,x  ,y+1,1))/255;
+		b += 2.0f*((float) ppm_data(bi,x  ,y+1,2))/255;
+		r += 1.0f*((float) ppm_data(bi,x+1,y+1,0))/255;
+		g += 1.0f*((float) ppm_data(bi,x+1,y+1,1))/255;
+		b += 1.0f*((float) ppm_data(bi,x+1,y+1,2))/255;
+
+		r /= 12.0f;
+		g /= 12.0f;
+		b /= 12.0f;
+
+		ppm_data(bo, x, y, 0) = r*255;
+		ppm_data(bo, x, y, 1) = g*255;
+		ppm_data(bo, x, y, 2) = b*255;
+	} /*}}}*/
+	/* CASE 2 */
+	if (1) { /*{{{*/
+		/*
+		 * ----+
+		 * 2 4 |
+		 * 1 2 |
+		 */
+		const unsigned int x = bi->width-1;
+		const unsigned int y = 0;
+		float r = 0.0f;
+		float g = 0.0f;
+		float b = 0.0f;
+
+		r += 2.0f*((float) ppm_data(bi,x-1,y  ,0))/255;
+		g += 2.0f*((float) ppm_data(bi,x-1,y  ,1))/255;
+		b += 2.0f*((float) ppm_data(bi,x-1,y  ,2))/255;
+		r += 4.0f*((float) ppm_data(bi,x  ,y  ,0))/255;
+		g += 4.0f*((float) ppm_data(bi,x  ,y  ,1))/255;
+		b += 4.0f*((float) ppm_data(bi,x  ,y  ,2))/255;
+
+		r += 1.0f*((float) ppm_data(bi,x-1,y+1,0))/255;
+		g += 1.0f*((float) ppm_data(bi,x-1,y+1,1))/255;
+		b += 1.0f*((float) ppm_data(bi,x-1,y+1,2))/255;
+		r += 2.0f*((float) ppm_data(bi,x  ,y+1,0))/255;
+		g += 2.0f*((float) ppm_data(bi,x  ,y+1,1))/255;
+		b += 2.0f*((float) ppm_data(bi,x  ,y+1,2))/255;
+
+		r /= 9.0f;
+		g /= 9.0f;
+		b /= 9.0f;
+
+		ppm_data(bo, x, y, 0) = r*255.0f;
+		ppm_data(bo, x, y, 1) = g*255.0f;
+		ppm_data(bo, x, y, 2) = b*255.0f;
+
+	} /*}}}*/
+	/* CASE 3 */
+	for (unsigned int y=1; y<bi->height-1; ++y) { /*{{{*/
+		/*
+		 * | 2 1
+		 * | 4 2
+		 * | 2 1
+		 */
+		const unsigned int x = 0;
+		float r = 0.0f;
+		float g = 0.0f;
+		float b = 0.0f;
+
+		r += 2.0f*((float) ppm_data(bi,x  ,y-1,0))/255;
+		g += 2.0f*((float) ppm_data(bi,x  ,y-1,1))/255;
+		b += 2.0f*((float) ppm_data(bi,x  ,y-1,2))/255;
+		r += 1.0f*((float) ppm_data(bi,x+1,y-1,0))/255;
+		g += 1.0f*((float) ppm_data(bi,x+1,y-1,1))/255;
+		b += 1.0f*((float) ppm_data(bi,x+1,y-1,2))/255;
+
+		r += 4.0f*((float) ppm_data(bi,x  ,y  ,0))/255;
+		g += 4.0f*((float) ppm_data(bi,x  ,y  ,1))/255;
+		b += 4.0f*((float) ppm_data(bi,x  ,y  ,2))/255;
+		r += 2.0f*((float) ppm_data(bi,x+1,y  ,0))/255;
+		g += 2.0f*((float) ppm_data(bi,x+1,y  ,1))/255;
+		b += 2.0f*((float) ppm_data(bi,x+1,y  ,2))/255;
+
+		r += 2.0f*((float) ppm_data(bi,x  ,y+1,0))/255;
+		g += 2.0f*((float) ppm_data(bi,x  ,y+1,1))/255;
+		b += 2.0f*((float) ppm_data(bi,x  ,y+1,2))/255;
+		r += 1.0f*((float) ppm_data(bi,x+1,y+1,0))/255;
+		g += 1.0f*((float) ppm_data(bi,x+1,y+1,1))/255;
+		b += 1.0f*((float) ppm_data(bi,x+1,y+1,2))/255;
+
+		r /= 12.0f;
+		g /= 12.0f;
+		b /= 12.0f;
+
+		ppm_data(bo, x, y, 0) = r*255.0f;
+		ppm_data(bo, x, y, 1) = g*255.0f;
+		ppm_data(bo, x, y, 2) = b*255.0f;
+
+	} /*}}}*/
+	/* CASE 4 */
+	for (unsigned int y=1; y<bi->height-1; ++y) { /*{{{*/
+		for (unsigned int x=1; x<bi->width-1; ++x) {
+			/*
+			 * 1 2 1
+			 * 2 4 2
+			 * 1 2 1
+			 */
+			float r = 0.0f;
+			float g = 0.0f;
+			float b = 0.0f;
+
+			r += 1.0f*((float) ppm_data(bi,x-1,y-1,0))/255;
+			g += 1.0f*((float) ppm_data(bi,x-1,y-1,1))/255;
+			b += 1.0f*((float) ppm_data(bi,x-1,y-1,2))/255;
+			r += 2.0f*((float) ppm_data(bi,x  ,y-1,0))/255;
+			g += 2.0f*((float) ppm_data(bi,x  ,y-1,1))/255;
+			b += 2.0f*((float) ppm_data(bi,x  ,y-1,2))/255;
+			r += 1.0f*((float) ppm_data(bi,x+1,y-1,0))/255;
+			g += 1.0f*((float) ppm_data(bi,x+1,y-1,1))/255;
+			b += 1.0f*((float) ppm_data(bi,x+1,y-1,2))/255;
+
+			r += 2.0f*((float) ppm_data(bi,x-1,y  ,0))/255;
+			g += 2.0f*((float) ppm_data(bi,x-1,y  ,1))/255;
+			b += 2.0f*((float) ppm_data(bi,x-1,y  ,2))/255;
+			r += 4.0f*((float) ppm_data(bi,x  ,y  ,0))/255;
+			g += 4.0f*((float) ppm_data(bi,x  ,y  ,1))/255;
+			b += 4.0f*((float) ppm_data(bi,x  ,y  ,2))/255;
+			r += 2.0f*((float) ppm_data(bi,x+1,y  ,0))/255;
+			g += 2.0f*((float) ppm_data(bi,x+1,y  ,1))/255;
+			b += 2.0f*((float) ppm_data(bi,x+1,y  ,2))/255;
+
+			r += 1.0f*((float) ppm_data(bi,x-1,y+1,0))/255;
+			g += 1.0f*((float) ppm_data(bi,x-1,y+1,1))/255;
+			b += 1.0f*((float) ppm_data(bi,x-1,y+1,2))/255;
+			r += 2.0f*((float) ppm_data(bi,x  ,y+1,0))/255;
+			g += 2.0f*((float) ppm_data(bi,x  ,y+1,1))/255;
+			b += 2.0f*((float) ppm_data(bi,x  ,y+1,2))/255;
+			r += 1.0f*((float) ppm_data(bi,x+1,y+1,0))/255;
+			g += 1.0f*((float) ppm_data(bi,x+1,y+1,1))/255;
+			b += 1.0f*((float) ppm_data(bi,x+1,y+1,2))/255;
+
+			r /= 16.0f;
+			g /= 16.0f;
+			b /= 16.0f;
+
+			ppm_data(bo, x, y, 0) = r*255.0f;
+			ppm_data(bo, x, y, 1) = g*255.0f;
+			ppm_data(bo, x, y, 2) = b*255.0f;
+
+		}
+	} /*}}}*/
+	/* CASE 5 */
+	for (unsigned int y=1; y<bi->height-1; ++y) { /*{{{*/
+		/*
+		 * 1 2 |
+		 * 2 4 |
+		 * 1 2 |
+		 */
+		const unsigned int x = 0;
+		float r = 0.0f;
+		float g = 0.0f;
+		float b = 0.0f;
+
+		r += 1.0f*((float) ppm_data(bi,x-1,y-1,0))/255;
+		g += 1.0f*((float) ppm_data(bi,x-1,y-1,1))/255;
+		b += 1.0f*((float) ppm_data(bi,x-1,y-1,2))/255;
+		r += 2.0f*((float) ppm_data(bi,x  ,y-1,0))/255;
+		g += 2.0f*((float) ppm_data(bi,x  ,y-1,1))/255;
+		b += 2.0f*((float) ppm_data(bi,x  ,y-1,2))/255;
+
+		r += 2.0f*((float) ppm_data(bi,x-1,y  ,0))/255;
+		g += 2.0f*((float) ppm_data(bi,x-1,y  ,1))/255;
+		b += 2.0f*((float) ppm_data(bi,x-1,y  ,2))/255;
+		r += 4.0f*((float) ppm_data(bi,x  ,y  ,0))/255;
+		g += 4.0f*((float) ppm_data(bi,x  ,y  ,1))/255;
+		b += 4.0f*((float) ppm_data(bi,x  ,y  ,2))/255;
+
+		r += 1.0f*((float) ppm_data(bi,x-1,y+1,0))/255;
+		g += 1.0f*((float) ppm_data(bi,x-1,y+1,1))/255;
+		b += 1.0f*((float) ppm_data(bi,x-1,y+1,2))/255;
+		r += 2.0f*((float) ppm_data(bi,x  ,y+1,0))/255;
+		g += 2.0f*((float) ppm_data(bi,x  ,y+1,1))/255;
+		b += 2.0f*((float) ppm_data(bi,x  ,y+1,2))/255;
+
+		r /= 12.0f;
+		g /= 12.0f;
+		b /= 12.0f;
+
+		ppm_data(bo, x, y, 0) = r*255.0f;
+		ppm_data(bo, x, y, 1) = g*255.0f;
+		ppm_data(bo, x, y, 2) = b*255.0f;
+
+	} /*}}}*/
+	/* CASE 6 */
+	if (1) { /*{{{*/
+		/*
+		 * | 2 1
+		 * | 4 2
+		 * +----
+		 */
+		const unsigned int x = 0;
+		const unsigned int y = bi->height-1;
+		float r = 0.0f;
+		float g = 0.0f;
+		float b = 0.0f;
+
+		r += 2.0f*((float) ppm_data(bi,x  ,y-1,0))/255;
+		g += 2.0f*((float) ppm_data(bi,x  ,y-1,1))/255;
+		b += 2.0f*((float) ppm_data(bi,x  ,y-1,2))/255;
+		r += 1.0f*((float) ppm_data(bi,x+1,y-1,0))/255;
+		g += 1.0f*((float) ppm_data(bi,x+1,y-1,1))/255;
+		b += 1.0f*((float) ppm_data(bi,x+1,y-1,2))/255;
+
+		r += 4.0f*((float) ppm_data(bi,x  ,y  ,0))/255;
+		g += 4.0f*((float) ppm_data(bi,x  ,y  ,1))/255;
+		b += 4.0f*((float) ppm_data(bi,x  ,y  ,2))/255;
+		r += 2.0f*((float) ppm_data(bi,x+1,y  ,0))/255;
+		g += 2.0f*((float) ppm_data(bi,x+1,y  ,1))/255;
+		b += 2.0f*((float) ppm_data(bi,x+1,y  ,2))/255;
+
+		r /= 9.0f;
+		g /= 9.0f;
+		b /= 9.0f;
+
+		ppm_data(bo, x, y, 0) = r*255.0f;
+		ppm_data(bo, x, y, 1) = g*255.0f;
+		ppm_data(bo, x, y, 2) = b*255.0f;
+	} /*}}}*/
+	/* CASE 7 */
+	for (unsigned int x=1; x<bi->width-1; ++x) { /*{{{*/
+		/* 1 2 1
+		 * 2 4 2
+		 * ----- */
+		const unsigned int y = bi->height-1;
+		float r = 0.0f;
+		float g = 0.0f;
+		float b = 0.0f;
+
+		r += 1.0f*((float) ppm_data(bi,x-1,y-1,0))/255;
+		g += 1.0f*((float) ppm_data(bi,x-1,y-1,1))/255;
+		b += 1.0f*((float) ppm_data(bi,x-1,y-1,2))/255;
+		r += 2.0f*((float) ppm_data(bi,x  ,y-1,0))/255;
+		g += 2.0f*((float) ppm_data(bi,x  ,y-1,1))/255;
+		b += 2.0f*((float) ppm_data(bi,x  ,y-1,2))/255;
+		r += 1.0f*((float) ppm_data(bi,x+1,y-1,0))/255;
+		g += 1.0f*((float) ppm_data(bi,x+1,y-1,1))/255;
+		b += 1.0f*((float) ppm_data(bi,x+1,y-1,2))/255;
+
+		r += 2.0f*((float) ppm_data(bi,x-1,y  ,0))/255;
+		g += 2.0f*((float) ppm_data(bi,x-1,y  ,1))/255;
+		b += 2.0f*((float) ppm_data(bi,x-1,y  ,2))/255;
+		r += 4.0f*((float) ppm_data(bi,x  ,y  ,0))/255;
+		g += 4.0f*((float) ppm_data(bi,x  ,y  ,1))/255;
+		b += 4.0f*((float) ppm_data(bi,x  ,y  ,2))/255;
+		r += 2.0f*((float) ppm_data(bi,x+1,y  ,0))/255;
+		g += 2.0f*((float) ppm_data(bi,x+1,y  ,1))/255;
+		b += 2.0f*((float) ppm_data(bi,x+1,y  ,2))/255;
+
+		r /= 12.0f;
+		g /= 12.0f;
+		b /= 12.0f;
+
+		ppm_data(bo, x, y, 0) = r*255.0f;
+		ppm_data(bo, x, y, 1) = g*255.0f;
+		ppm_data(bo, x, y, 2) = b*255.0f;
+	} /*}}}*/
+	/* CASE 8 */
+	if (1) { /*{{{*/
+		/*
+		 * 1 2 |
+		 * 2 4 |
+		 * ----+
+		 */
+		const unsigned int x = bi->width-1;
+		const unsigned int y = bi->height-1;
+		float r = 0.0f;
+		float g = 0.0f;
+		float b = 0.0f;
+
+		r += 1.0f*((float) ppm_data(bi,x-1,y-1,0))/255;
+		g += 1.0f*((float) ppm_data(bi,x-1,y-1,1))/255;
+		b += 1.0f*((float) ppm_data(bi,x-1,y-1,2))/255;
+		r += 2.0f*((float) ppm_data(bi,x  ,y-1,0))/255;
+		g += 2.0f*((float) ppm_data(bi,x  ,y-1,1))/255;
+		b += 2.0f*((float) ppm_data(bi,x  ,y-1,2))/255;
+
+		r += 2.0f*((float) ppm_data(bi,x-1,y  ,0))/255;
+		g += 2.0f*((float) ppm_data(bi,x-1,y  ,1))/255;
+		b += 2.0f*((float) ppm_data(bi,x-1,y  ,2))/255;
+		r += 4.0f*((float) ppm_data(bi,x  ,y  ,0))/255;
+		g += 4.0f*((float) ppm_data(bi,x  ,y  ,1))/255;
+		b += 4.0f*((float) ppm_data(bi,x  ,y  ,2))/255;
+
+
+		r /= 9.0f;
+		g /= 9.0f;
+		b /= 9.0f;
+
+		ppm_data(bo, x, y, 0) = r*255.0f;
+		ppm_data(bo, x, y, 1) = g*255.0f;
+		ppm_data(bo, x, y, 2) = b*255.0f;
+	} /*}}}*/
+} /*}}}*/
